@@ -8,9 +8,7 @@ import pandas as pd
 import matplotlib.pyplot as plt
 import arviz as az
 import pickle
-from pathlib import Path
 import folium
-import geopandas as gpd
 from streamlit_folium import st_folium
 from folium.plugins import MeasureControl, MousePosition, Fullscreen, MiniMap
 
@@ -30,7 +28,7 @@ st.markdown(
     """
     This interactive graphical user interface (GUI) predicts **Community Decimal Intensity (CDI)** 
     for user-defined earthquake scenarios using a trained Bayesian Gaussian Process (GP) model 
-    developed for the Kolkata and Bengal Basin region.
+    developed for the Bengal Basin region.
 
     The framework performs probabilistic CDI prediction, posterior uncertainty quantification, 
     exceedance probability estimation, and interactive spatial visualization for scenario-based 
@@ -63,32 +61,6 @@ def load_model():
 @st.cache_data
 def load_training_data():
     return pd.read_csv("df_gp.csv")
-
-
-@st.cache_data
-def load_fault_shapefile(shp_path):
-    """
-    Load a fault shapefile and reproject to WGS84 for Folium mapping.
-    The shapefile path should point to the .shp file, with associated
-    .shx, .dbf, .prj files in the same folder.
-    """
-    shp_path = Path(shp_path)
-    if not shp_path.exists():
-        return None
-
-    try:
-        gdf = gpd.read_file(shp_path)
-        if gdf.empty:
-            return None
-        if gdf.crs is None:
-            # Assumes geographic coordinates if CRS is missing.
-            gdf = gdf.set_crs(epsg=4326)
-        else:
-            gdf = gdf.to_crs(epsg=4326)
-        return gdf
-    except Exception as exc:
-        st.warning(f"Could not load fault shapefile: {shp_path.name}. Error: {exc}")
-        return None
 
 
 idata_loaded, model_meta = load_model()
@@ -264,51 +236,6 @@ def predict_gp_fast_point_posterior(
 
 
 # ------------------------------------------------------------
-# RECENT EARTHQUAKE SCENARIOS AND FAULT LAYERS
-# ------------------------------------------------------------
-
-recent_events = [
-    {
-        "event_name": "2025 Mw 5.4 Tungi, Bangladesh earthquake",
-        "time": "2025-11-21T04:38:28.942Z",
-        "latitude": 23.8580,
-        "longitude": 90.5404,
-        "depth_km": 27.0,
-        "magnitude": 5.4,
-        "mag_type": "Mw",
-        "location": "14 km ESE of Tungi, Bangladesh"
-    },
-    {
-        "event_name": "2026 M 5.3 Taki, India earthquake",
-        "time": "2026-02-27T07:52:24.828Z",
-        "latitude": 22.4510,
-        "longitude": 89.1394,
-        "depth_km": 9.751,
-        "magnitude": 5.3,
-        "mag_type": "mb",
-        "location": "26 km SE of Taki, India"
-    }
-]
-
-# Update these paths to match your repository folder structure.
-# Each .shp file should have its companion .shx, .dbf, and .prj files.
-fault_files = {
-    "Gravity faults": "Gravity_faults.shp",
-    "Fault with basement and cover": "Faults_basement_and_cover.shp",
-    "Shear Zones": "Shear_zones.shp",
-    "Strike Slip Faults": "strike_slip_faults.shp",
-    "Neo-tectonic Faults": "Neotectonic_faults.shp"
-}
-
-fault_colors = {
-    "Gravity faults": "brown",
-    "Fault with basement and cover": "orange",
-    "Shear Zones": "black",
-    "Strike Slip Faults": "magenta",
-    "Neo-tectonic Faults": "blue"
-}
-
-# ------------------------------------------------------------
 # SESSION STATE
 # ------------------------------------------------------------
 
@@ -324,37 +251,6 @@ if "results" not in st.session_state:
 # ------------------------------------------------------------
 
 st.sidebar.header("User Inputs")
-
-st.sidebar.subheader("Scenario Preset")
-
-event_options = ["Custom scenario"] + [event["event_name"] for event in recent_events]
-
-selected_event_name = st.sidebar.selectbox(
-    "Select recent earthquake scenario",
-    event_options
-)
-
-selected_event = None
-if selected_event_name != "Custom scenario":
-    selected_event = next(
-        event for event in recent_events
-        if event["event_name"] == selected_event_name
-    )
-
-    st.sidebar.info(
-        f"""
-        **{selected_event['event_name']}**  
-        Time: {selected_event['time']}  
-        Location: {selected_event['location']}  
-        Magnitude: {selected_event['magnitude']} {selected_event['mag_type']}  
-        Depth: {selected_event['depth_km']} km
-        """
-    )
-
-default_source_lat = selected_event["latitude"] if selected_event else 23.5000
-default_source_lon = selected_event["longitude"] if selected_event else 90.0000
-default_mag = selected_event["magnitude"] if selected_event else 6.0
-default_depth_km = selected_event["depth_km"] if selected_event else 30.0
 
 st.sidebar.subheader("Prediction Site")
 
@@ -374,21 +270,21 @@ st.sidebar.subheader("Earthquake Source")
 
 source_lat = st.sidebar.number_input(
     "Source latitude",
-    value=float(default_source_lat),
+    value=23.5000,
     format="%.4f"
 )
 
 source_lon = st.sidebar.number_input(
     "Source longitude",
-    value=float(default_source_lon),
+    value=90.0000,
     format="%.4f"
 )
 
 mag = st.sidebar.number_input(
-    "Magnitude",
+    "Magnitude Mw",
     min_value=3.0,
     max_value=9.5,
-    value=float(default_mag),
+    value=6.0,
     step=0.1
 )
 
@@ -396,24 +292,9 @@ depth_km = st.sidebar.number_input(
     "Focal depth, km",
     min_value=0.0,
     max_value=300.0,
-    value=float(default_depth_km),
+    value=30.0,
     step=1.0
 )
-
-st.sidebar.subheader("Map Layers")
-
-show_faults = st.sidebar.checkbox(
-    "Show fault layers",
-    value=True
-)
-
-selected_fault_layers = []
-if show_faults:
-    selected_fault_layers = st.sidebar.multiselect(
-        "Select fault types",
-        list(fault_files.keys()),
-        default=list(fault_files.keys())[:1]
-    )
 
 n_draws = st.sidebar.slider(
     "Posterior draws",
@@ -489,8 +370,7 @@ if st.session_state.run_prediction and run_button:
         "source_lon": source_lon,
         "mag": mag,
         "depth_km": depth_km,
-        "n_draws": n_draws,
-        "selected_event_name": selected_event_name
+        "n_draws": n_draws
     }
 
 
@@ -512,7 +392,6 @@ if st.session_state.results is not None:
     mag = results["mag"]
     depth_km = results["depth_km"]
     n_draws = results["n_draws"]
-    selected_event_name = results.get("selected_event_name", "Custom scenario")
 
     mean_cdi = np.mean(cdi_post)
     median_cdi = np.median(cdi_post)
@@ -524,9 +403,6 @@ if st.session_state.results is not None:
     hypo_dist = df_point["Hypocentral distance"].iloc[0]
 
     st.subheader("Prediction Summary")
-
-    if selected_event_name != "Custom scenario":
-        st.markdown(f"**Selected scenario preset:** {selected_event_name}")
 
     col1, col2, col3, col4, col5 = st.columns(5)
 
@@ -658,47 +534,6 @@ if st.session_state.results is not None:
             opacity=0.7,
             tooltip=f"Epicentral distance = {epi_dist:.1f} km"
         ).add_to(m)
-
-
-        # Optional fault-trace overlays for geological context.
-        if show_faults and selected_fault_layers:
-            for layer_name in selected_fault_layers:
-                faults_gdf = load_fault_shapefile(fault_files[layer_name])
-
-                if faults_gdf is None:
-                    st.warning(
-                        f"Fault layer '{layer_name}' was not loaded. "
-                        f"Check the path: {fault_files[layer_name]}"
-                    )
-                    continue
-
-                tooltip_fields = []
-                tooltip_aliases = []
-
-                for candidate in ["fault_name", "Fault_Name", "name", "Name", "TYPE", "type"]:
-                    if candidate in faults_gdf.columns:
-                        tooltip_fields.append(candidate)
-                        tooltip_aliases.append(candidate.replace("_", " ").title() + ":")
-
-                folium.GeoJson(
-                    faults_gdf,
-                    name=layer_name,
-                    style_function=lambda feature, layer_name=layer_name: {
-                        "color": fault_colors.get(layer_name, "black"),
-                        "weight": 2,
-                        "opacity": 0.85,
-                    },
-                    tooltip=folium.GeoJsonTooltip(
-                        fields=tooltip_fields,
-                        aliases=tooltip_aliases,
-                        sticky=True
-                    ) if tooltip_fields else None
-                ).add_to(m)
-
-            st.caption(
-                "Fault layers are shown for geological context only and are not directly "
-                "used as predictors in the current Bayesian GP-CDI model."
-            )
 
         m.add_child(MeasureControl())
         m.add_child(Fullscreen())
