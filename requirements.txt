@@ -1,0 +1,10 @@
+streamlit
+streamlit-folium
+folium
+numpy==1.26.4
+pandas
+matplotlib
+arviz
+xarray
+netcdf4
+scipy
