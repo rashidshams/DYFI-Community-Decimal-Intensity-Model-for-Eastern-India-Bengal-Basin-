@@ -235,6 +235,34 @@ def predict_gp_fast_point_posterior(
     return preds
 
 
+
+# ------------------------------------------------------------
+# RECENT EARTHQUAKE SCENARIOS
+# ------------------------------------------------------------
+
+recent_events = [
+    {
+        "event_name": "2025 Mw 5.4 Tungi, Bangladesh earthquake",
+        "time": "2025-11-21T04:38:28.942Z",
+        "latitude": 23.8580,
+        "longitude": 90.5404,
+        "depth_km": 27.0,
+        "magnitude": 5.4,
+        "mag_type": "Mw",
+        "location": "14 km ESE of Tungi, Bangladesh"
+    },
+    {
+        "event_name": "2026 M 5.3 Taki, India earthquake",
+        "time": "2026-02-27T07:52:24.828Z",
+        "latitude": 22.4510,
+        "longitude": 89.1394,
+        "depth_km": 9.751,
+        "magnitude": 5.3,
+        "mag_type": "mb",
+        "location": "26 km SE of Taki, India"
+    }
+]
+
 # ------------------------------------------------------------
 # SESSION STATE
 # ------------------------------------------------------------
@@ -252,6 +280,48 @@ if "results" not in st.session_state:
 
 st.sidebar.header("User Inputs")
 
+# ------------------------------------------------------------
+# SCENARIO PRESETS
+# ------------------------------------------------------------
+
+st.sidebar.subheader("Scenario Preset")
+
+event_options = ["Custom scenario"] + [
+    event["event_name"] for event in recent_events
+]
+
+selected_event_name = st.sidebar.selectbox(
+    "Select recent earthquake scenario",
+    event_options
+)
+
+selected_event = None
+
+if selected_event_name != "Custom scenario":
+    selected_event = next(
+        event for event in recent_events
+        if event["event_name"] == selected_event_name
+    )
+
+    st.sidebar.info(
+        f"""
+        **{selected_event['event_name']}**  
+        Time: {selected_event['time']}  
+        Location: {selected_event['location']}  
+        Magnitude: {selected_event['magnitude']} {selected_event['mag_type']}  
+        Depth: {selected_event['depth_km']} km
+        """
+    )
+
+default_source_lat = selected_event["latitude"] if selected_event else 23.5000
+default_source_lon = selected_event["longitude"] if selected_event else 90.0000
+default_mag = selected_event["magnitude"] if selected_event else 6.0
+default_depth_km = selected_event["depth_km"] if selected_event else 30.0
+
+# ------------------------------------------------------------
+# SITE INPUTS
+# ------------------------------------------------------------
+
 st.sidebar.subheader("Prediction Site")
 
 site_lat = st.sidebar.number_input(
@@ -266,17 +336,21 @@ site_lon = st.sidebar.number_input(
     format="%.4f"
 )
 
+# ------------------------------------------------------------
+# SOURCE INPUTS
+# ------------------------------------------------------------
+
 st.sidebar.subheader("Earthquake Source")
 
 source_lat = st.sidebar.number_input(
     "Source latitude",
-    value=23.5000,
+    value=float(default_source_lat),
     format="%.4f"
 )
 
 source_lon = st.sidebar.number_input(
     "Source longitude",
-    value=90.0000,
+    value=float(default_source_lon),
     format="%.4f"
 )
 
@@ -284,7 +358,7 @@ mag = st.sidebar.number_input(
     "Magnitude Mw",
     min_value=3.0,
     max_value=9.5,
-    value=6.0,
+    value=float(default_mag),
     step=0.1
 )
 
@@ -292,7 +366,7 @@ depth_km = st.sidebar.number_input(
     "Focal depth, km",
     min_value=0.0,
     max_value=300.0,
-    value=30.0,
+    value=float(default_depth_km),
     step=1.0
 )
 
@@ -324,15 +398,13 @@ if not st.session_state.run_prediction and st.session_state.results is None:
 
     st.markdown(
         """
-        **Example default scenario**
+        **Example workflow**
 
-        - Prediction site: Kolkata  
+        - Select **Custom scenario** or one of the recent earthquake presets.  
+        - Default prediction site: Kolkata  
         - Site latitude: 22.5726  
         - Site longitude: 88.3639  
-        - Source latitude: 24.5000  
-        - Source longitude: 91.0000  
-        - Magnitude: Mw 5.5  
-        - Depth: 60 km  
+        - Available presets: 2025 Tungi, Bangladesh Mw 5.4 and 2026 Taki, India M 5.3.  
         """
     )
 
@@ -370,7 +442,8 @@ if st.session_state.run_prediction and run_button:
         "source_lon": source_lon,
         "mag": mag,
         "depth_km": depth_km,
-        "n_draws": n_draws
+        "n_draws": n_draws,
+        "selected_event_name": selected_event_name
     }
 
 
@@ -392,6 +465,7 @@ if st.session_state.results is not None:
     mag = results["mag"]
     depth_km = results["depth_km"]
     n_draws = results["n_draws"]
+    selected_event_name = results.get("selected_event_name", "Custom scenario")
 
     mean_cdi = np.mean(cdi_post)
     median_cdi = np.median(cdi_post)
@@ -403,6 +477,9 @@ if st.session_state.results is not None:
     hypo_dist = df_point["Hypocentral distance"].iloc[0]
 
     st.subheader("Prediction Summary")
+
+    if selected_event_name != "Custom scenario":
+        st.markdown(f"**Selected scenario preset:** {selected_event_name}")
 
     col1, col2, col3, col4, col5 = st.columns(5)
 
@@ -600,6 +677,7 @@ if st.session_state.results is not None:
         st.subheader("Download Prediction Results")
 
         result_df = df_point.copy()
+        result_df["scenario_preset"] = selected_event_name
         result_df["CDI_mean"] = mean_cdi
         result_df["CDI_median"] = median_cdi
         result_df["CDI_std"] = std_cdi
